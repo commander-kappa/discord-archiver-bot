@@ -1,23 +1,26 @@
 import os; from os import path
 import json
 import requests
+import io
 import discord as dc
+import convert_history
 
 DIR_PATH = f"{path.dirname(path.abspath(__file__))}"
 OUTPUT_PATH = path.join(DIR_PATH, 'output')
 
 TOKEN = ''
-ADMIN_ID = ''
+ADMINS = []
 try:
-    with open(path.join(DIR_PATH, 'TOKEN'), 'r') as t:
-        TOKEN = t.readline()
+    with open(path.join(DIR_PATH, 'TOKEN'), 'r') as file:
+        TOKEN = file.readline()
 except Exception as e:
     print(f"ERROR Could not read TOKEN file: {e}")
     exit()
 
 try:
-    with open(path.join(DIR_PATH, 'ADMIN'), 'r') as a:
-        ADMIN_ID = a.readline()
+    with open(path.join(DIR_PATH, 'ADMIN'), 'r') as file:
+        for admin in file:
+            ADMINS.append(admin.rstrip('\n'))
 except Exception as e:
     print(f"WARNING Could not read ADMIN file: {e}")
 
@@ -25,6 +28,7 @@ def create_server_dir(server_id: int) -> None:
     server_id = str(server_id)
     SERVER_DIR = path.join(OUTPUT_PATH, str(server_id))
 
+    os.makedirs(OUTPUT_PATH, exist_ok=True)
     os.makedirs(SERVER_DIR, exist_ok=True)
     os.makedirs(path.join(SERVER_DIR, 'attachments'), exist_ok=True)
 
@@ -93,7 +97,8 @@ def download_attachment(server_id:int, url:str, att_id:int, name:str) -> None:
     except Exception as e:
         print(f"ERROR: Could not save attachment ({e})")
 
-def write_buffer_to_file(server: dc.Guild, channel: dc.TextChannel, buffer: list[dict]) -> None:
+def write_buffer_to_file(channel:dc.TextChannel, buffer:list[dict], with_attachments:bool = True) -> None:
+    server = channel.guild
     create_server_dir(str(server.id))
 
     try:
@@ -102,66 +107,137 @@ def write_buffer_to_file(server: dc.Guild, channel: dc.TextChannel, buffer: list
 
         with open(ARCHIVE_FILE, 'w', encoding='utf-8') as f:
             f.write(json.dumps(format_channel_header(channel)) + "\n")
+            
             for msg in buffer:
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
                 
-                for att in msg['attachments']:
-                    download_attachment(server.id, att['url'], att['id'], att['filename'])
-
+                if with_attachments:
+                    for att in msg['attachments']:
+                        download_attachment(server.id, att['url'], att['id'], att['filename'])
+        
         print(f"Archived {len(buffer)} messages to {ARCHIVE_FILE}")
     
     except Exception as e:
         print(f"ERROR: writing to archive file failed: {e}")
 
-async def archive_channel(server: dc.Guild, channel: dc.channel) -> None:
-    print(f'archiving: [{server.name}] #{channel.name}')
+async def archive_channel(channel:dc.channel) -> list[dict]:
+    print(f'archiving: [{channel.guild.name}] #{channel.name}')
 
     buffer = []
     
-    async for msg in channel.history():
+    async for msg in channel.history(limit=None):
         buffer.append(format_message(msg))
     
     buffer.reverse()
-    write_buffer_to_file(server, channel, buffer)
+    return buffer
+    #write_buffer_to_file(server, channel, buffer)
 
 def isAdmin(user = dc.Member) -> bool:
     out = False
-    if str(user.id) == ADMIN_ID:
+    if str(user.id) in ADMINS:
         print(f"@<{user.id}> is defined in ADMIN file")
         out = True
-    if user.guild_permissions.administrator:
-        print(user.guild_permissions.administrator)
-        print(f"@{user.name} is Admin on this Server")
-        out = True
+    #if user.guild_permissions.administrator:
+    #    print(user.guild_permissions.administrator)
+    #    print(f"@{user.name} is Admin on this Server")
+    #    out = True
     return out
 
 class MyClient(dc.Client):
     async def on_ready(self):
         print(f"Logged on as {self.user}!")
-    
+        try:
+            synced = await tree.sync()
+            print(f"Synced {len(synced)} command(s)")
+        except Exception as e:
+            print(f"Failed to sync commands: {e}")
+
     async def on_message(self, msg):
         print(f"[{msg.guild.name}]#{msg.channel.name} @{msg.author.name}: {msg.content}")
-        
-        if msg.content.startswith('$archive'):
-            print(f'archive triggered by @{msg.author.name}')
-            if not isAdmin(msg.author):
-                await msg.channel.send('YOU ARE NOT ADMIN!')
-            else:
-                await archive_channel(msg.guild, msg.channel)
-        
-        if msg.content.startswith('$archiveAll'):
-            print(f'archiveAll triggered by @{msg.author.name}')
-            if not isAdmin(msg.author):
-                await msg.channel.send('YOU ARE NOT ADMIN!')
-            else:
-                await msg.channel.send('Archiving Server!')
-                for channel in msg.guild.text_channels:
-                    await archive_channel(msg.guild, channel)
-                print(f"Finished Achiving [{msg.guild.name}]")
-
 
 intents = dc.Intents.default()
 intents.message_content = True
 
 client = MyClient(intents=intents)
+tree = dc.app_commands.CommandTree(client)
+
+@tree.command(name="archive", description="Archive a channel")
+async def archive(
+    interaction: dc.Interaction,
+    channel: dc.TextChannel = None,
+    with_attachments: bool = True
+):
+
+    if channel is None:
+        channel = interaction.channel
+
+    if not isAdmin(interaction.user):
+        await interaction.response.send_message("YOU ARE NOT ADMIN!", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+    
+    write_buffer_to_file(
+        channel = channel,
+        buffer = await archive_channel(channel), 
+        with_attachments = with_attachments
+    )
+    
+    await interaction.followup.send(f"Archived #{channel.name}!")
+
+@tree.command(name="archive_server", description="Archive all channels in the server")
+async def archive_all(interaction: dc.Interaction, with_attachments: bool = True):
+    
+    if not isAdmin(interaction.user):
+        await interaction.response.send_message("YOU ARE NOT ADMIN!", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+    await interaction.followup.send("Archiving server...")
+    
+    for channel in interaction.guild.text_channels:
+        write_buffer_to_file(
+            channel = channel,
+            buffer = await archive_channel(channel),
+            with_attachments = with_attachments
+        )
+
+    await interaction.followup.send("Server archived!")
+
+@tree.command(name="make_history", description="Sends channel history")
+async def make_history_file(
+    interaction: dc.Interaction,
+    channel: dc.TextChannel = None,
+    as_file: bool = True
+):
+    if channel is None:
+        channel = interaction.channel
+
+    if not isAdmin(interaction.user):
+        await interaction.response.send_message("YOU ARE NOT ADMIN!", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+    await interaction.followup.send("Generating history file...")
+
+
+    inMemoryFile = io.BytesIO()
+    writer = io.BufferedWriter(raw=inMemoryFile)
+
+    buffer = await archive_channel(channel)
+
+    for message in buffer:
+        print(message)
+        writer.write(f"{convert_history.format_message(message)}\n".encode('utf-8'))
+    
+    writer.flush()
+    inMemoryFile.seek(0)
+
+    await interaction.followup.send(
+        content = f"#{channel.name} history file",
+        file = dc.File(fp = inMemoryFile, filename='history.txt')
+    )
+    
+    inMemoryFile.close()
+
 client.run(TOKEN)
