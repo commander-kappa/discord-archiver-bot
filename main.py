@@ -230,7 +230,7 @@ async def make_history_file(
     else:
         response_buffer = ""
         response_list = []
-        
+        response = ""        
         for message in buffer:
             response = f"{convert_history.format_message(message)}\n"
             
@@ -239,6 +239,7 @@ async def make_history_file(
                 response_buffer = ""
 
             response_buffer += response
+        response_list.append(response)        
 
         for response in response_list:
             await interaction.followup.send(content = response)
