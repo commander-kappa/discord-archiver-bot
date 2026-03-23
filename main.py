@@ -34,13 +34,22 @@ def format_channel_header(channel: dc.TextChannel) -> dict:
         "timestamp": channel.created_at.isoformat(),
     }
 
-def get_server_info():
-    pass
+def get_server_info(server: dc.Guild) -> dict:
+    return {
+        'id': server.id,
+        'name': server.name,
+        'owner' : {
+            'id': server.owner.id,
+            'name': server.owner.name
+        },
+        'description': server.description,
+        'members': server.member_count,
+        'created_at': server.created_at
+    }
 
 def format_message(message: dc.Message) -> dict:
     #Convert a Discord message to a standardized dictionary format.
     #Handles escaping and special characters automatically via JSON.
-
     return {
         "timestamp": message.created_at.isoformat(),
         "author": {
@@ -88,7 +97,11 @@ def download_attachment(server_id:int, url:str, att_id:int, name:str) -> None:
     except Exception as e:
         print(f"ERROR: Could not save attachment ({e})")
 
-def write_buffer_to_file(channel:dc.TextChannel, buffer:list[dict], with_attachments:bool = True) -> None:
+def write_buffer_to_file(
+    channel:dc.TextChannel,
+    buffer:list[dict],
+    with_attachments:bool = True
+    ) -> None:
     server = channel.guild
     create_server_dir(str(server.id))
 
@@ -125,7 +138,7 @@ async def create_channel_buffer(channel:dc.channel) -> list[dict]:
 def isAdmin(user = dc.Member) -> bool:
     out = False
     if str(user.id) in ADMINS:
-        print(f"@<{user.id}> is defined in ADMIN file")
+        print(f"<{user.id}> is defined in ADMIN file")
         out = True
     return out
 
@@ -154,7 +167,6 @@ async def archive(
     channel: dc.TextChannel = None,
     with_attachments: bool = True
 ):
-
     if channel is None:
         channel = interaction.channel
 
@@ -174,7 +186,7 @@ async def archive(
 
 @tree.command(name="archive_server", description="Archive all channels in the server")
 async def archive_all(interaction: dc.Interaction, with_attachments: bool = True):
-    
+
     if not isAdmin(interaction.user):
         await interaction.response.send_message("YOU ARE NOT ADMIN!", ephemeral=True)
         return
@@ -244,8 +256,13 @@ async def make_history_file(
         for response in response_list:
             await interaction.followup.send(content = response)
 
-@tree.command(name="clear_dice_channel", description='Clears all #-würfel channels')
-async def clear_dice_channel(interaction: dc.Interaction, do_it:bool = False):
+@tree.command(name="clear_channels", description='Clears all #-substring channels')
+async def clear_channels(
+    interaction: dc.Interaction, 
+    substring: str,
+    do_it:bool = False,
+    delete_old:bool = False
+    ):
     if not isAdmin(interaction.user):
         await interaction.response.send_message("YOU ARE NOT ADMIN!", ephemeral=True)
         return
@@ -253,17 +270,30 @@ async def clear_dice_channel(interaction: dc.Interaction, do_it:bool = False):
     await interaction.response.defer()
 
     for channel in interaction.guild.text_channels:
-        if 'würfel' in channel.name:
-            if do_it: 
-                async for msg in channel.history(limit=None):
-                    await msg.delete()
+        if substring in channel.name:
+            if do_it:
+                pos = channel.position
+                clone = await channel.clone(
+                    name = f"{channel.name}-clone",
+                    category = channel.category,
+                    reason = 'Clear channel Operation')
+                if delete_old:
+                    await channel.delete(reason = 'Clear channel Operation')
+                else:  
+                    await channel.edit(
+                        name = f"{channel.name}-old",
+                        position = pos + 1,
+                        reason = 'Clear channel Operation')
+                await clone.edit(
+                    name = clone.name.replace('-clone', ''),
+                    position = pos, 
+                    reason = 'Clear channel Operation')
             else:
                 await interaction.followup.send(content = f"#{channel.name}\n")
         else:
             continue
     if do_it:
-        await interaction.followup.send(content = f"Alle Würfel Channel cleared!")
-
+        await interaction.followup.send(content = f"All {substring} channels cleared!")
 
 
 if __name__ == '__main__':
