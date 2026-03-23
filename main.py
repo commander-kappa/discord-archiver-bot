@@ -111,7 +111,7 @@ def write_buffer_to_file(channel:dc.TextChannel, buffer:list[dict], with_attachm
     except Exception as e:
         print(f"ERROR: writing to archive file failed: {e}")
 
-async def archive_channel(channel:dc.channel) -> list[dict]:
+async def create_channel_buffer(channel:dc.channel) -> list[dict]:
     print(f'archiving: [{channel.guild.name}] #{channel.name}')
 
     buffer = []
@@ -166,7 +166,7 @@ async def archive(
     
     write_buffer_to_file(
         channel = channel,
-        buffer = await archive_channel(channel), 
+        buffer = await create_channel_buffer(channel), 
         with_attachments = with_attachments
     )
     
@@ -185,7 +185,7 @@ async def archive_all(interaction: dc.Interaction, with_attachments: bool = True
     for channel in interaction.guild.text_channels:
         write_buffer_to_file(
             channel = channel,
-            buffer = await archive_channel(channel),
+            buffer = await create_channel_buffer(channel),
             with_attachments = with_attachments
         )
 
@@ -208,7 +208,7 @@ async def make_history_file(
     await interaction.followup.send("Generating history file...")
 
 
-    buffer = await archive_channel(channel)
+    buffer = await create_channel_buffer(channel)
     
     if as_file:
         inMemoryFile = io.BytesIO()
@@ -242,6 +242,32 @@ async def make_history_file(
 
         for response in response_list:
             await interaction.followup.send(content = response)
+
+@tree.command(name="clear_dice_channel", description='Clears all #-würfel channels')
+async def clear_dice_channel(interaction: dc.Interaction, do_it:bool = False):
+    if not isAdmin(interaction.user):
+        await interaction.response.send_message("YOU ARE NOT ADMIN!", ephemeral=True)
+        return
+
+    BOT_LIST = [
+        209048672195969025,
+        538555398521618432,
+        303766795423186944
+    ]
+
+    await interaction.response.defer()
+
+    for channel in interaction.guild.text_channels:
+        if 'würfel' in channel.name:
+            if do_it: 
+                async for msg in channel.history(limit=None):
+                    await msg.delete()
+            else:
+                await interaction.followup.send(content = f"#{channel.name}\n")
+        else:
+            continue
+    if do_it:
+        await interaction.followup.send(content = f"Alle Würfel Channel cleared!")
 
 
 
