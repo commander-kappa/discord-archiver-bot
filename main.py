@@ -4,25 +4,16 @@ import requests
 import io
 import discord as dc
 import convert_history
+import setup
+
+DISCORD_MAX_MESSAGE_LENGTH = 2000
 
 DIR_PATH = f"{path.dirname(path.abspath(__file__))}"
 OUTPUT_PATH = path.join(DIR_PATH, 'output')
 
 TOKEN = ''
 ADMINS = []
-try:
-    with open(path.join(DIR_PATH, 'TOKEN'), 'r') as file:
-        TOKEN = file.readline()
-except Exception as e:
-    print(f"ERROR Could not read TOKEN file: {e}")
-    exit()
 
-try:
-    with open(path.join(DIR_PATH, 'ADMIN'), 'r') as file:
-        for admin in file:
-            ADMINS.append(admin.rstrip('\n'))
-except Exception as e:
-    print(f"WARNING Could not read ADMIN file: {e}")
 
 def create_server_dir(server_id: int) -> None:
     server_id = str(server_id)
@@ -130,17 +121,12 @@ async def archive_channel(channel:dc.channel) -> list[dict]:
     
     buffer.reverse()
     return buffer
-    #write_buffer_to_file(server, channel, buffer)
 
 def isAdmin(user = dc.Member) -> bool:
     out = False
     if str(user.id) in ADMINS:
         print(f"@<{user.id}> is defined in ADMIN file")
         out = True
-    #if user.guild_permissions.administrator:
-    #    print(user.guild_permissions.administrator)
-    #    print(f"@{user.name} is Admin on this Server")
-    #    out = True
     return out
 
 class MyClient(dc.Client):
@@ -155,13 +141,14 @@ class MyClient(dc.Client):
     async def on_message(self, msg):
         print(f"[{msg.guild.name}]#{msg.channel.name} @{msg.author.name}: {msg.content}")
 
+
 intents = dc.Intents.default()
 intents.message_content = True
 
 client = MyClient(intents=intents)
 tree = dc.app_commands.CommandTree(client)
 
-@tree.command(name="archive", description="Archive a channel")
+@tree.command(name="archive_channel", description="Archive a channel")
 async def archive(
     interaction: dc.Interaction,
     channel: dc.TextChannel = None,
@@ -221,23 +208,63 @@ async def make_history_file(
     await interaction.followup.send("Generating history file...")
 
 
-    inMemoryFile = io.BytesIO()
-    writer = io.BufferedWriter(raw=inMemoryFile)
-
     buffer = await archive_channel(channel)
-
-    for message in buffer:
-        print(message)
-        writer.write(f"{convert_history.format_message(message)}\n".encode('utf-8'))
     
-    writer.flush()
-    inMemoryFile.seek(0)
+    if as_file:
+        inMemoryFile = io.BytesIO()
+        writer = io.BufferedWriter(raw=inMemoryFile)
 
-    await interaction.followup.send(
-        content = f"#{channel.name} history file",
-        file = dc.File(fp = inMemoryFile, filename='history.txt')
-    )
+        for message in buffer:
+            writer.write(f"{convert_history.format_message(message)}\n".encode('utf-8'))
+        
+        writer.flush()
+        inMemoryFile.seek(0)
+
+        await interaction.followup.send(
+            content = f"#{channel.name} history file",
+            file = dc.File(fp = inMemoryFile, filename='history.txt')
+        )
+        
+        inMemoryFile.close()
     
-    inMemoryFile.close()
+    else:
+        response_buffer = ""
+        response_list = []
+        
+        for message in buffer:
+            response = f"{convert_history.format_message(message)}\n"
+            
+            if len(response_buffer) + len(response) > DISCORD_MAX_MESSAGE_LENGTH:
+                response_list.append(response_buffer[:-1])
+                response_buffer = ""
 
-client.run(TOKEN)
+            response_buffer += response
+
+        for response in response_list:
+            await interaction.followup.send(content = response)
+
+
+
+if __name__ == '__main__':
+    setup.create_dir_structure(DIR_PATH)
+    
+    try:
+        with open(path.join(DIR_PATH, 'TOKEN'), 'r') as file:
+            TOKEN = file.readline()
+    except Exception as e:
+        print(f"ERROR: Could not read TOKEN file\n{e}")
+        exit()
+
+    try:
+        with open(path.join(DIR_PATH, 'ADMIN'), 'r') as file:
+            for admin in file:
+                if not setup.validate_user_id_string(admin, verbose=False):
+                    continue
+                else:
+                    ADMINS.append(admin.rstrip('\n'))
+        if len(ADMINS) == 0:
+            print('WARNING: No valid user ID found in ADMIN file!')
+    except Exception as e:
+        print(f"WARNING: Could not read ADMIN file\n{e}")
+
+    client.run(TOKEN)
