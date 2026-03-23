@@ -230,7 +230,7 @@ async def make_history_file(
     else:
         response_buffer = ""
         response_list = []
-        response = ""        
+
         for message in buffer:
             response = f"{convert_history.format_message(message)}\n"
             
@@ -239,7 +239,7 @@ async def make_history_file(
                 response_buffer = ""
 
             response_buffer += response
-        response_list.append(response)        
+        response_list.append(response_buffer)        
 
         for response in response_list:
             await interaction.followup.send(content = response)
@@ -249,12 +249,6 @@ async def clear_dice_channel(interaction: dc.Interaction, do_it:bool = False):
     if not isAdmin(interaction.user):
         await interaction.response.send_message("YOU ARE NOT ADMIN!", ephemeral=True)
         return
-
-    BOT_LIST = [
-        209048672195969025,
-        538555398521618432,
-        303766795423186944
-    ]
 
     await interaction.response.defer()
 
