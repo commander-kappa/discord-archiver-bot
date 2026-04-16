@@ -4,7 +4,6 @@ import json
 import datetime
 
 
-
 def format_iso_time(iso_ts:str) -> str:
     iso_ts_obj = datetime.datetime.fromisoformat(iso_ts)
     return datetime.datetime.strftime(iso_ts_obj, "%Y-%m-%d %H:%M:%S")
@@ -16,38 +15,38 @@ def format_message(msg: dict) -> str:
     return f"{format_iso_time(msg['timestamp'])} - @{msg['author']['name']}:\n{msg['content']}"
     
 def format_buffer(buffer: list[str]) -> str:
-    out = ''
-    for item in buffer:
-        out += item + "\n"
+    return '\n'.join(buffer)
 
 def convert_file(file_path:str) -> list[str]:
     buffer = []
-    
-    with open(file_path, 'r') as f:
-        header = f.readline()
-        header = json.loads(header)
+    try:
+        with open(file_path, 'r') as f:
+            header = f.readline()
+            header = json.loads(header)
 
-        buffer.append(format_header(header))
+            buffer.append(format_header(header))
 
-        for line in f:
-            msg = json.loads(line)
+            for line in f:
+                msg = json.loads(line)
 
-            buffer.append(format_message(msg))
-    
-    return buffer
+                buffer.append(format_message(msg))
+        
+        return buffer
+    except Exception as e:
+        print(f"ERROR: {e}")
+        return []
 
 if __name__ == '__main__':    
     if len(sys.argv) < 2:
         print('ERROR: Not enough file arguments given!')
     
     WORKING_DIR = os.getcwd()
-    SCRIPT_DIR = f"{path.dirname(path.abspath(__file__))}"
-    OUTPUT_DIR = path.join(SCRIPT_PATH, 'output')
+    SCRIPT_DIR = path.dirname(path.abspath(__file__))
+    OUTPUT_DIR = path.join(SCRIPT_DIR, 'output')
 
 
     for arg in sys.argv[1:]:
         file_path = path.join(WORKING_DIR, arg)
-    
         print(f"Converting File: {file_path}")
-
-        convert_file(file_path)
+        for msg in convert_file(file_path):
+            print(msg)

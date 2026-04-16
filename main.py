@@ -10,7 +10,7 @@ DISCORD_MAX_MESSAGE_LENGTH = 2000
 
 DIR_PATH = f"{path.dirname(path.abspath(__file__))}"
 OUTPUT_PATH = path.join(DIR_PATH, 'output')
-
+#TODO: Handle GLOBAL vars?
 TOKEN = ''
 ADMINS = []
 
@@ -35,6 +35,7 @@ def format_channel_header(channel: dc.TextChannel) -> dict:
     }
 
 def get_server_info(server: dc.Guild) -> dict:
+    #TODO: Implement meta.json file
     return {
         'id': server.id,
         'name': server.name,
@@ -82,6 +83,8 @@ def format_message(message: dc.Message) -> dict:
     }
 
 def download_attachment(server_id:int, url:str, att_id:int, name:str) -> None:
+    #TODO: Handle rate limit
+    #TODO: Check integrity of file
     file_name = f"{str(att_id)}_{name}"
     ATTACHMENT_PATH = path.join(OUTPUT_PATH, str(server_id), 'attachments', file_name)
     if path.exists(ATTACHMENT_PATH):
@@ -129,13 +132,12 @@ async def create_channel_buffer(channel:dc.channel) -> list[dict]:
 
     buffer = []
     
-    async for msg in channel.history(limit=None):
+    async for msg in channel.history(limit=None, oldest_first=True):
         buffer.append(format_message(msg))
     
-    buffer.reverse()
     return buffer
 
-def isAdmin(user = dc.Member) -> bool:
+def isAdmin(user: dc.Member) -> bool:
     out = False
     if str(user.id) in ADMINS:
         print(f"<{user.id}> is defined in ADMIN file")
@@ -176,6 +178,7 @@ async def archive(
 
     await interaction.response.defer()
     
+    #TODO: better async IO?
     write_buffer_to_file(
         channel = channel,
         buffer = await create_channel_buffer(channel), 
@@ -194,6 +197,7 @@ async def archive_all(interaction: dc.Interaction, with_attachments: bool = True
     await interaction.response.defer()
     await interaction.followup.send("Archiving server...")
     
+    #TODO: better async IO?
     for channel in interaction.guild.text_channels:
         write_buffer_to_file(
             channel = channel,
@@ -223,21 +227,23 @@ async def make_history_file(
     buffer = await create_channel_buffer(channel)
     
     if as_file:
-        inMemoryFile = io.BytesIO()
-        writer = io.BufferedWriter(raw=inMemoryFile)
+        try:
+            inMemoryFile = io.BytesIO()
+            writer = io.BufferedWriter(raw=inMemoryFile)
 
-        for message in buffer:
-            writer.write(f"{convert_history.format_message(message)}\n".encode('utf-8'))
-        
-        writer.flush()
-        inMemoryFile.seek(0)
+            for message in buffer:
+                writer.write(f"{convert_history.format_message(message)}\n".encode('utf-8'))
+            
+            writer.flush()
+            inMemoryFile.seek(0)
 
-        await interaction.followup.send(
-            content = f"#{channel.name} history file",
-            file = dc.File(fp = inMemoryFile, filename='history.txt')
-        )
-        
-        inMemoryFile.close()
+            await interaction.followup.send(
+                content = f"#{channel.name} history file",
+                file = dc.File(fp = inMemoryFile, filename='history.txt')
+            )
+        finally:
+            writer.close()
+            inMemoryFile.close()
     
     else:
         response_buffer = ""
@@ -269,8 +275,10 @@ async def clear_channels(
 
     await interaction.response.defer()
 
+    found_any = False
     for channel in interaction.guild.text_channels:
         if substring in channel.name:
+            found_any = True
             if do_it:
                 pos = channel.position
                 clone = await channel.clone(
@@ -290,9 +298,10 @@ async def clear_channels(
                     reason = 'Clear channel Operation')
             else:
                 await interaction.followup.send(content = f"#{channel.name}\n")
-        else:
-            continue
-    if do_it:
+        
+    if not found_any:
+        await interaction.followup.send(f"No channels containing '{substring}' found.")
+    elif do_it:
         await interaction.followup.send(content = f"All {substring} channels cleared!")
 
 
