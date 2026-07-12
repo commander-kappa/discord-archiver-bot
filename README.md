@@ -5,13 +5,12 @@ A Python-based Discord bot that enables server administrators to efficiently arc
 ## Table of Contents
 
 - [Features](#features)
+- [Stack](#stack)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Output Format](#output-format)
-- [Architecture](#architecture)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
 - [License](#license)
+- [Contributing](#contributing)
+- [Contact](#contact)
 
 ## Features
 
@@ -51,7 +50,7 @@ A Python-based Discord bot that enables server administrators to efficiently arc
     2. Create a new application
     3. Navigate to the "Bot" section and create a bot
     4. Copy your bot token (keep this private!)
-    5. Under "OAuth2" → "URL Generator", select:
+    5. Under "OAuth2" "URL Generator", select:
         - Scopes: bot, applications.commands
         - Permissions: Read Messages/View Channels, Read Message History, Send Messages, Attach Files, Manage Channels, Manage Messages
 
@@ -158,7 +157,6 @@ Clears all messages from channels matching a substring pattern. Useful for clean
 ```
 /clear_channels substring:test do_it:true delete_old:false
 ```
-\:
 
 
 ## License
